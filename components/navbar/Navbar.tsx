@@ -5,6 +5,7 @@ import Logo from "./Logo"
 import NavSearch from "./NavSearch"
 import Container from "../global/Container"
 import { Suspense } from "react"
+import { Show, SignInButton, SignOutButton, SignUpButton } from "@clerk/nextjs"
 
 const Navbar = () => {
   return (

@@ -4,6 +4,7 @@ import "./globals.css"
 import Navbar from "@/components/navbar/Navbar"
 import { ThemeProvider } from "@/components/theme-provider"
 import Container from "@/components/global/Container"
+import { ClerkProvider } from "@clerk/nextjs"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -22,15 +23,21 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
+        <ClerkProvider
+          appearance={{
+            cssLayerName: "clerk",
+          }}
         >
-          <Navbar />
-          <Container className="py-20">{children}</Container>
-        </ThemeProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <Navbar />
+            <Container className="py-20">{children}</Container>
+          </ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   )

@@ -1632,7 +1632,7 @@ export default Providers
 npm install @clerk/nextjs
 ```
 
-- create .env.local
+.env
 
 ```bash
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
@@ -1664,19 +1664,27 @@ return (
 )
 ```
 
-- create middleware.ts
+- create proxy.ts
+  [Configure middleware](https://clerk.com/docs/reference/nextjs/clerk-middleware?_gl=1*1nwpjhq*_gcl_au*MjIxNTIwMDU4LjE3Nzc4NTg2MDAuMTY5NjAxMDY4Ny4xNzc3ODU4NjQzLjE3Nzc4NTk4NjA.*_ga*Njk1OTAxMTk5LjE3Nzc4NTg2MDA.*_ga_1WMF5X234K*czE3Nzc4NTg2MDAkbzEkZzEkdDE3Nzc4NjAxNzQkajYwJGwwJGgw)
 
 ```ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
 const isPublicRoute = createRouteMatcher(["/", "/products(.*)", "/about"])
 
-export default clerkMiddleware((auth, req) => {
-  if (!isPublicRoute(req)) auth().protect()
+export default clerkMiddleware(async (auth, req) => {
+  if (!isPublicRoute(req)) {
+    await auth.protect()
+  }
 })
 
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: [
+    // Skip Next.js internals and all static files, unless found in search params
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
+  ],
 }
 ```
 
@@ -1714,17 +1722,27 @@ export default SignOutLink
 ### UserIcon Component
 
 ```tsx
-import { LuUser2 } from "react-icons/lu"
-import { currentUser } from "@clerk/nextjs/server"
-async function UserIcon() {
-  const user = await currentUser()
-  const profileImage = user?.imageUrl
-  if (profileImage)
+"use client"
+
+import { UserAvatar, useUser } from "@clerk/nextjs"
+import { LuUser } from "react-icons/lu"
+
+const UserIcon = () => {
+  const { user } = useUser()
+
+  if (user)
     return (
-      <img src={profileImage} className="w-6 h-6 rounded-full object-cover" />
+      <UserAvatar
+        appearance={{
+          elements: {
+            userAvatarBox: "w-6! h-6!",
+          },
+        }}
+      />
     )
-  return <LuUser2 className="w-6 h-6 bg-primary rounded-full text-white" />
+  return <LuUser className="w-6! h-6! bg-primary rounded-full text-white" />
 }
+
 export default UserIcon
 ```
 
@@ -1756,20 +1774,20 @@ function LinksDropdown() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-48" align="start" sideOffset={10}>
-        <SignedOut>
+        <Show when="signed-out">
           <DropdownMenuItem>
             <SignInButton mode="modal">
               <button className="w-full text-left">Login</button>
             </SignInButton>
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem>
             <SignUpButton mode="modal">
               <button className="w-full text-left">Register</button>
             </SignUpButton>
           </DropdownMenuItem>
-        </SignedOut>
-        <SignedIn>
+        </Show>
+
+        <Show when="signed-in">
           {links.map((link) => {
             return (
               <DropdownMenuItem key={link.href}>
@@ -1783,7 +1801,7 @@ function LinksDropdown() {
           <DropdownMenuItem>
             <SignOutLink />
           </DropdownMenuItem>
-        </SignedIn>
+        </Show>
       </DropdownMenuContent>
     </DropdownMenu>
   )
