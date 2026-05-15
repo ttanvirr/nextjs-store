@@ -1,3 +1,5 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -7,13 +9,13 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { links } from "@/utils/links"
-import { Show, SignInButton, SignUpButton, UserAvatar } from "@clerk/nextjs"
+import { Show, SignInButton, SignUpButton } from "@clerk/nextjs"
 import { LucideAlignLeft } from "lucide-react"
 import Link from "next/link"
 import SignOutLink from "./SignOutLink"
 import UserIcon from "./UserIcon"
 
-const LinksDropdown = () => {
+const LinksDropdown = ({ isAdmin }: { isAdmin: boolean }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -40,6 +42,7 @@ const LinksDropdown = () => {
 
         <Show when="signed-in">
           {links.map((link) => {
+            if (link.label === "dashboard" && !isAdmin) return null
             return (
               <DropdownMenuItem key={link.href}>
                 <Link href={link.href} className="capitalize w-full">

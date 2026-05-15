@@ -5,9 +5,12 @@ import Logo from "./Logo"
 import NavSearch from "./NavSearch"
 import Container from "../global/Container"
 import { Suspense } from "react"
-import { Show, SignInButton, SignOutButton, SignUpButton } from "@clerk/nextjs"
+import { auth } from "@clerk/nextjs/server"
 
-const Navbar = () => {
+const Navbar = async () => {
+  const { userId } = await auth()
+  const isAdmin = userId === process.env.ADMIN_USER_ID
+
   return (
     <nav className="border-b ">
       <Container className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 py-4">
@@ -19,7 +22,7 @@ const Navbar = () => {
         <div className="flex gap-4 items-center">
           <CartButton />
           <DarkMode />
-          <LinksDropdown />
+          <LinksDropdown isAdmin={isAdmin} />
         </div>
       </Container>
     </nav>

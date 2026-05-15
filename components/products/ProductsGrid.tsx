@@ -4,8 +4,10 @@ import { Product } from "@/generated/prisma/client"
 import { Card, CardContent } from "../ui/card"
 import { formatCurrency } from "@/utils/format"
 import FavoriteToggleButton from "./FavoriteToggleButton"
+import EmptyList from "../global/EmptyList"
 
 const ProductsGrid = ({ products }: { products: Product[] }) => {
+  if (products.length === 0) return <EmptyList className="pt-12" />
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pt-12">
       {products.map((product) => {

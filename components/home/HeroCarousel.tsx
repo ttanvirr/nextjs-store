@@ -11,7 +11,6 @@ import {
 } from "../ui/carousel"
 import { Card, CardContent } from "../ui/card"
 import Image from "next/image"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 
 const heroImages = [hero1, hero2, hero3, hero4]
 
@@ -31,6 +30,7 @@ const HeroCarousel = () => {
                         alt="hero image"
                         width={600}
                         height={600}
+                        loading="eager"
                         className="w-full h-96 rounded-md object-cover"
                       />
                     </CardContent>

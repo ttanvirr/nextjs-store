@@ -13,14 +13,24 @@ datasource db {
 }
 
 model Product {
-  id          String    @id @default(uuid())
+  id          String       @id @default(uuid())
   name        String
   company     String
   description String
-  featured    Boolean
+  featured    Boolean  
   image       String
   price       Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   clerkId     String
+  favorites   Favorite []
+}
+
+model Favorite {
+  id String @id @default(uuid())
+  clerkId String
+  productId String
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAT DateTime @updatedAt
 }

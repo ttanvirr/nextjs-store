@@ -1606,15 +1606,31 @@ import { Toaster } from "@/components/ui/toaster"
 function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <Toaster />
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        {children}
-      </ThemeProvider>
+      <body className={inter.className}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+
+          <Toaster
+            position="top-center"
+            closeButton={true}
+            duration={5000}
+            toastOptions={{
+              classNames: {
+                toast: "!bg-white dark:!bg-zinc-900  !border !shadow-lg",
+                title: "text-sm! font-semibold! ",
+                error: "border-red-200! dark:border-red-800! text-red-600!",
+                success:
+                  "border-green-200! dark:border-green-800! text-green-600! bg-green-50!",
+              },
+            }}
+          />
+        </ThemeProvider>
+      </body>
     </>
   )
 }
@@ -1917,22 +1933,30 @@ const isPublicRoute = createRouteMatcher(["/", "/products(.*)", "/about"])
 const isAdminRoute = createRouteMatcher(["/admin(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
-  // console.log(auth().userId);
-
-  const isAdminUser = auth().userId === process.env.ADMIN_USER_ID
+  const { userId } = await auth()
+  const isAdminUser = userId === process.env.ADMIN_USER_ID
 
   if (isAdminRoute(req) && !isAdminUser) {
+    // console.log(userId)
     return NextResponse.redirect(new URL("/", req.url))
   }
-  if (!isPublicRoute(req)) auth().protect()
+
+  if (!isPublicRoute(req)) {
+    await auth.protect()
+  }
 })
 
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: [
+    // Skip Next.js internals and all static files, unless found in search params
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
+  ],
 }
 ```
 
-- add userId to .env
+- add userId to .env (check in your clerk dashboard)
 
 ```sh
 ADMIN_USER_ID=
@@ -1940,11 +1964,41 @@ ADMIN_USER_ID=
 
 ### Restrict Access - LinksDropdown
 
+- First, we need to pass the userId from from a server component, here, Navbar
+
+Navbar.tsx
+
 ```tsx
 import { auth } from "@clerk/nextjs/server"
-function LinksDropdown() {
-  const { userId } = auth()
+
+const Navbar = async () => {
+  const { userId } = await auth()
   const isAdmin = userId === process.env.ADMIN_USER_ID
+
+  return (
+    <nav className="border-b ">
+     .....
+        <div className="flex gap-4 items-center">
+          <CartButton />
+          <DarkMode />
+          <LinksDropdown isAdmin={isAdmin} />
+        </div>
+      </Container>
+    </nav>
+  )
+}
+
+export default Navbar
+```
+
+LinksDropdown.tsx (make it client component)
+
+```tsx
+"use client"
+.......
+
+function LinksDropdown({isAdmin}:{isAdmin:boolean}) {
+
   return (
     <>
       {links.map((link) => {
@@ -2032,8 +2086,8 @@ export default CreateProductPage
 FormInput.tsx
 
 ```tsx
-import { Label } from "../ui/label"
-import { Input } from "../ui/input"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 
 type FormInputProps = {
   name: string
@@ -2042,28 +2096,28 @@ type FormInputProps = {
   defaultValue?: string
   placeholder?: string
 }
-
-function FormInput({
-  label,
+const FormInput = ({
   name,
   type,
+  label,
   defaultValue,
   placeholder,
-}: FormInputProps) {
+}: FormInputProps) => {
   return (
-    <div className="mb-2">
-      <Label htmlFor={name} className="capitalize">
+    <Field>
+      <FieldLabel htmlFor={name} className="capitalize">
         {label || name}
-      </Label>
+      </FieldLabel>
       <Input
+        type={type}
         id={name}
         name={name}
-        type={type}
-        defaultValue={defaultValue}
+        autoComplete="off"
         placeholder={placeholder}
+        defaultValue={defaultValue}
         required
       />
-    </div>
+    </Field>
   )
 }
 
@@ -2073,59 +2127,104 @@ export default FormInput
 ### PriceInput Component
 
 ```tsx
-import { Label } from "../ui/label"
-import { Input } from "../ui/input"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 
-const name = "price"
 type FormInputNumberProps = {
   defaultValue?: number
 }
 
-function PriceInput({ defaultValue }: FormInputNumberProps) {
+const name = "price"
+
+const PriceInput = ({ defaultValue }: FormInputNumberProps) => {
   return (
-    <div className="mb-2">
-      <Label htmlFor="price" className="capitalize">
-        Price ($)
-      </Label>
+    <Field>
+      <FieldLabel htmlFor={name} className="capitalize">
+        price ($)
+      </FieldLabel>
       <Input
-        id={name}
         type="number"
+        id={name}
         name={name}
+        autoComplete="off"
         min={0}
-        defaultValue={defaultValue || 100}
+        defaultValue={defaultValue || 0}
         required
       />
-    </div>
+    </Field>
   )
 }
+
 export default PriceInput
 ```
 
 ### ImageInput Component
 
 ```tsx
-import { Label } from "../ui/label"
-import { Input } from "../ui/input"
+"use client"
 
-function ImageInput() {
-  const name = "image"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import React, { useState } from "react"
+import { toast } from "sonner"
+
+const name = "image"
+
+const ImageInput = () => {
+  const [file, setFile] = useState<File | null>(null)
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+
+    if (!selectedFile) return
+
+    // Client side validation
+
+    // size validation
+    if (selectedFile.size > 1024 * 1024) {
+      toast.success("Image size should be less than 1MB")
+      e.target.value = "" // reset input
+      // setFile(null)
+      return
+    }
+
+    // file type validation
+    if (!selectedFile.type.startsWith("image/")) {
+      toast.error("File type must be an image")
+      e.target.value = "" // reset input
+      // setFile(null)
+      return
+    }
+
+    setFile(selectedFile)
+  }
+
   return (
-    <div className="mb-2">
-      <Label htmlFor={name} className="capitalize">
-        Image
-      </Label>
-      <Input id={name} name={name} type="file" required accept="image/*" />
-    </div>
+    <Field>
+      <FieldLabel htmlFor={name} className="capitalize">
+        image
+      </FieldLabel>
+      <Input
+        type="file"
+        accept="image/*"
+        id={name}
+        name={name}
+        autoComplete="off"
+        required
+        onChange={handleFileChange}
+      />
+    </Field>
   )
 }
+
 export default ImageInput
 ```
 
 ### TextAreaInput Component
 
 ```tsx
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Textarea } from "../ui/textarea"
 
 type TextAreaInputProps = {
   name: string
@@ -2133,28 +2232,33 @@ type TextAreaInputProps = {
   defaultValue?: string
 }
 
-function TextAreaInput({ name, labelText, defaultValue }: TextAreaInputProps) {
+const TextAreaInput = ({
+  name,
+  labelText,
+  defaultValue,
+}: TextAreaInputProps) => {
   return (
-    <div className="mb-2">
-      <Label htmlFor={name} className="capitalize">
+    <Field>
+      <FieldLabel htmlFor={name} className="capitalize">
         {labelText || name}
-      </Label>
+      </FieldLabel>
       <Textarea
         id={name}
         name={name}
-        defaultValue={defaultValue}
+        autoComplete="off"
         rows={5}
+        defaultValue={defaultValue}
         required
         className="leading-loose"
       />
-    </div>
+    </Field>
   )
 }
 
 export default TextAreaInput
 ```
 
-### CheckBoxInput Component
+### CheckBoxInput Component (needs to be client component)
 
 ```tsx
 "use client"
@@ -2193,39 +2297,36 @@ components/form/Buttons.tsx
 ```tsx
 "use client"
 
-import { ReloadIcon } from "@radix-ui/react-icons"
-import { useFormStatus } from "react-dom"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { SignInButton } from "@clerk/nextjs"
-import { FaRegHeart, FaHeart } from "react-icons/fa"
-import { LuTrash2, LuPenSquare } from "react-icons/lu"
+import { Button } from "../ui/button"
+import { Spinner } from "../ui/spinner"
+import { useFormStatus } from "react-dom"
 
 type btnSize = "default" | "lg" | "sm"
-
 type SubmitButtonProps = {
   className?: string
   text?: string
   size?: btnSize
 }
 
-export function SubmitButton({
+export const SubmitButton = ({
   className = "",
   text = "submit",
   size = "lg",
-}: SubmitButtonProps) {
+}: SubmitButtonProps) => {
   const { pending } = useFormStatus()
+  console.log("Pending: ", pending)
 
   return (
     <Button
       type="submit"
+      size={size}
       disabled={pending}
       className={cn("capitalize", className)}
-      size={size}
     >
       {pending ? (
         <>
-          <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
+          <Spinner data-icon="inline-start" />
           Please wait...
         </>
       ) : (
@@ -2270,31 +2371,48 @@ FormContainer.tsx
 ```tsx
 "use client"
 
-import { useFormState } from "react-dom"
-import { useEffect } from "react"
-import { useToast } from "@/components/ui/use-toast"
-import { actionFunction } from "@/utils/types"
+import React, { useActionState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
-const initialState = {
+const initialState: ActionFunctionResult = {
   message: "",
+  type: "success",
 }
 
-function FormContainer({
+const FormContainer = ({
   action,
   children,
+  redirectTo,
+  refresh,
 }: {
   action: actionFunction
   children: React.ReactNode
-}) {
-  const [state, formAction] = useFormState(action, initialState)
-  const { toast } = useToast()
+  redirectTo?: string
+  refresh?: boolean
+}) => {
+  const [state, formAction, isPending] = useActionState(action, initialState)
+  const router = useRouter()
+
   useEffect(() => {
-    if (state.message) {
-      toast({ description: state.message })
+    if (!state.message) return
+    if (state.type === "success") {
+      toast.success(state.message)
+      if (redirectTo) {
+        router.push(redirectTo)
+      }
+      if (refresh) {
+        router.refresh()
+      }
     }
-  }, [state])
+    if (state.type === "error") {
+      toast.error(state.message)
+    }
+  }, [state, router, redirectTo])
+
   return <form action={formAction}>{children}</form>
 }
+
 export default FormContainer
 ```
 
@@ -2316,59 +2434,77 @@ export const createProductAction = async (
 page.tsx
 
 ```tsx
-import FormInput from "@/components/form/FormInput"
 import { SubmitButton } from "@/components/form/Buttons"
+import CheckboxInput from "@/components/form/CheckboxInput"
 import FormContainer from "@/components/form/FormContainer"
-import { createProductAction } from "@/utils/actions"
+import FormInput from "@/components/form/FormInput"
 import ImageInput from "@/components/form/ImageInput"
 import PriceInput from "@/components/form/PriceInput"
 import TextAreaInput from "@/components/form/TextAreaInput"
-import { faker } from "@faker-js/faker"
-import CheckboxInput from "@/components/form/CheckboxInput"
 
-function CreateProduct() {
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { createProductAction } from "@/utils/actions"
+import { faker } from "@faker-js/faker"
+
+const CreateProductPage = () => {
   const name = faker.commerce.productName()
   const company = faker.company.name()
-  // const description = faker.commerce.productDescription();
-  const description = faker.lorem.paragraph({ min: 10, max: 12 })
+  const description = faker.commerce.productDescription()
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold mb-8 capitalize">create product</h1>
-      <div className="border p-8 rounded-md">
-        <FormContainer action={createProductAction}>
-          <div className="grid gap-4 md:grid-cols-2 my-4">
-            <FormInput
-              type="text"
-              name="name"
-              label="product name"
-              defaultValue={name}
+      <Card>
+        <CardHeader>
+          <CardTitle className="capitalize">create product</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FormContainer
+            action={createProductAction}
+            redirectTo="/admin/products"
+          >
+            <div className="grid gap-5 md:grid-cols-2 my-4">
+              <FormInput
+                type="text"
+                name="name"
+                label="product name"
+                defaultValue={name}
+              />
+              <FormInput
+                type="text"
+                name="company"
+                label="company"
+                defaultValue={company}
+              />
+              <PriceInput />
+              <ImageInput />
+            </div>
+            <TextAreaInput
+              name="description"
+              labelText="product description"
+              defaultValue={description}
             />
-            <FormInput
-              type="text"
-              name="company"
-              label="company"
-              defaultValue={company}
-            />
-            <PriceInput />
-            <ImageInput />
-          </div>
-          <TextAreaInput
-            name="description"
-            labelText="product description"
-            defaultValue={description}
-          />
-          <div className="mt-6">
-            <CheckboxInput name="featured" label="featured" />
-          </div>
+            <div className="mt-5">
+              <CheckboxInput name="featured" labelText="featured" />
+            </div>
 
-          <SubmitButton text="Create Product" className="mt-8" />
-        </FormContainer>
-      </div>
+            <div className="mt-10">
+              {/* Submit button must be inside form to work useFormStatus hook */}
+              <SubmitButton text="create product" />
+            </div>
+          </FormContainer>
+        </CardContent>
+      </Card>
     </section>
   )
 }
-export default CreateProduct
+
+export default CreateProductPage
 ```
 
 ### Helper Functions
@@ -2494,31 +2630,28 @@ export const createProductAction = async (
 schemas.ts
 
 ```ts
-import { z, ZodSchema } from "zod"
+import { z } from "zod"
 
-export const productSchema = z.object({
+export const ProductSchema = z.object({
   name: z
     .string()
-    .min(2, {
-      message: "name must be at least 2 characters.",
-    })
+    .min(3, { message: "Product name must be at least 3 characters" })
     .max(100, {
-      message: "name must be less than 100 characters.",
+      message: "Product name must be at most 100 characters",
     }),
   company: z.string(),
-  featured: z.coerce.boolean(),
-  price: z.coerce.number().int().min(0, {
-    message: "price must be a positive number.",
-  }),
+  price: z.coerce
+    .number()
+    .int()
+    .min(0, { message: "Price must be a positive number" }),
   description: z.string().refine(
-    (description) => {
-      const wordCount = description.split(" ").length
-      return wordCount >= 10 && wordCount <= 1000
+    (text) => {
+      const wordCount = text.split(" ").length
+      return wordCount >= 5 && wordCount <= 100
     },
-    {
-      message: "description must be between 10 and 1000 words.",
-    },
+    { message: "Description must be between 10 and 100 words" },
   ),
+  featured: z.coerce.boolean().default(false),
 })
 ```
 
@@ -2528,17 +2661,17 @@ try {
     const validatedFields = productSchema.safeParse(rawData);
 
     if (!validatedFields.success) {
-      const errors = validatedFields.error.errors.map((error) => error.message);
-      throw new Error(errors.join(','));
+      const errors = validatedFields.error.issues.map((err) => err.message)
+      throw new Error(errors.join(", "))
     }
 
-    await db.product.create({
+   await prisma.product.create({
       data: {
         ...validatedFields.data,
-        image: '/images/product-1.jpg',
+        image: "/images/hero-1.jpg",
         clerkId: user.id,
       },
-    });
+    })
     return { message: 'product created' };
   }
 ```
@@ -2548,13 +2681,10 @@ try {
 schemas.ts
 
 ```ts
-export function validateWithZodSchema<T>(
-  schema: ZodSchema<T>,
-  data: unknown,
-): T {
+export const validateWithZodSchema = <T>(schema: ZodType<T>, data: unknown) => {
   const result = schema.safeParse(data)
   if (!result.success) {
-    const errors = result.error.errors.map((error) => error.message)
+    const errors = result.error.issues.map((err) => err.message)
     throw new Error(errors.join(", "))
   }
   return result.data
@@ -2628,8 +2758,8 @@ try {
 ### Create Bucket, Setup Policy and API Keys
 
 ```env
-SUPABASE_URL=
-SUPABASE_KEY=
+SUPABASE_URL=<Project URL>
+SUPABASE_KEY=<Publishable key>
 ```
 
 ### Setup Supabase
@@ -2643,7 +2773,7 @@ utils/supabase.ts
 ```ts
 import { createClient } from "@supabase/supabase-js"
 
-const bucket = "your-bucket-name"
+const bucket = "main-bucket" // must match bucket name in supabase
 
 // Create a single supabase client for interacting with your database
 export const supabase = createClient(
@@ -2653,16 +2783,18 @@ export const supabase = createClient(
 
 export const uploadImage = async (image: File) => {
   const timestamp = Date.now()
-  // const newName = `/users/${timestamp}-${image.name}`;
-  const newName = `${timestamp}-${image.name}`
+  const fileName = `${timestamp}-${image.name}`
 
   const { data, error } = await supabase.storage
     .from(bucket)
-    .upload(newName, image, {
+    .upload(fileName, image, {
       cacheControl: "3600",
     })
+
   if (!data) throw new Error("Image upload failed")
-  return supabase.storage.from(bucket).getPublicUrl(newName).data.publicUrl
+
+  // return public url
+  return supabase.storage.from(bucket).getPublicUrl(fileName).data.publicUrl
 }
 ```
 
@@ -2752,9 +2884,6 @@ export const fetchAdminProducts = async () => {
 ```tsx
 import EmptyList from "@/components/global/EmptyList"
 import { fetchAdminProducts } from "@/utils/actions"
-import Link from "next/link"
-
-import { formatCurrency } from "@/utils/format"
 import {
   Table,
   TableBody,
@@ -2764,40 +2893,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import Link from "next/link"
+import { formatCurrency } from "@/utils/format"
 
-async function ItemsPage() {
-  const items = await fetchAdminProducts()
-  if (items.length === 0) return <EmptyList />
+const AdminProductsPage = async () => {
+  const products = await fetchAdminProducts()
+
+  if (products.length === 0) return <EmptyList />
+
   return (
     <section>
       <Table>
         <TableCaption className="capitalize">
-          total products : {items.length}
+          total products : {products.length}
         </TableCaption>
+
         <TableHeader>
           <TableRow>
             <TableHead>Product Name</TableHead>
             <TableHead>Company</TableHead>
-            <TableHead>Price</TableHead>
+            <TableHead>Price ($)</TableHead>
             <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
-          {items.map((item) => {
-            const { id: productId, name, company, price } = item
+          {products.map((product) => {
+            const { id: productId, name, company, price } = product
             return (
               <TableRow key={productId}>
                 <TableCell>
                   <Link
                     href={`/products/${productId}`}
-                    className="underline text-muted-foreground tracking-wide capitalize"
+                    target="_blank"
+                    className="underline text-muted-foreground hover:text-primary tracking-wide capitalize"
                   >
                     {name}
                   </Link>
                 </TableCell>
                 <TableCell>{company}</TableCell>
                 <TableCell>{formatCurrency(price)}</TableCell>
-
                 <TableCell className="flex items-center gap-x-2"></TableCell>
               </TableRow>
             )
@@ -2808,28 +2943,30 @@ async function ItemsPage() {
   )
 }
 
-export default ItemsPage
+export default AdminProductsPage
 ```
 
 ### Icon Button
 
+(/components/form/Buttons.tsx)
+
 ```tsx
-type actionType = "edit" | "delete"
-export const IconButton = ({ actionType }: { actionType: actionType }) => {
+type ActionType = "edit" | "delete"
+
+export const IconButton = ({ actionType }: { actionType: ActionType }) => {
   const { pending } = useFormStatus()
 
   const renderIcon = () => {
     switch (actionType) {
       case "edit":
-        return <LuPenSquare />
+        return <LucidePenSquare />
       case "delete":
-        return <LuTrash2 />
+        return <LucideTrash2 />
       default:
-        const never: never = actionType
-        throw new Error(`Invalid action type: ${never}`)
+        const InvalidActionType: never = actionType
+        throw new Error(`Invalid action type: ${InvalidActionType}`)
     }
   }
-
   return (
     <Button
       type="submit"
@@ -2837,7 +2974,14 @@ export const IconButton = ({ actionType }: { actionType: actionType }) => {
       variant="link"
       className="p-2 cursor-pointer"
     >
-      {pending ? <ReloadIcon className=" animate-spin" /> : renderIcon()}
+      {pending ? (
+        <>
+          <Spinner data-icon="inline-start" />
+          Please wait...
+        </>
+      ) : (
+        renderIcon()
+      )}
     </Button>
   )
 }
@@ -2848,21 +2992,21 @@ export const IconButton = ({ actionType }: { actionType: actionType }) => {
 - actions.ts
 
 ```ts
-import { revalidatePath } from "next/cache"
-
-export const deleteProductAction = async (prevState: { productId: string }) => {
+export const deleteProductAction = async (
+  prevState: { productId: string },
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
   const { productId } = prevState
   await getAdminUser()
 
   try {
-    await db.product.delete({
+    await prisma.product.delete({
       where: {
         id: productId,
       },
     })
-
-    revalidatePath("/admin/products")
-    return { message: "product removed" }
+    // revalidatePath("/admin/products") // this server action interrupts toast notification. Handle refresh in clint side (FormContainer) instead.
+    return { message: "Product deleted", type: "success" }
   } catch (error) {
     return renderError(error)
   }
@@ -2880,18 +3024,18 @@ return (
   <>
     <TableCell className="flex items-center gap-x-2">
       <Link href={`/admin/products/${productId}/edit`}>
-        <IconButton actionType="edit"></IconButton>
+        <IconButton actionType="edit" />
       </Link>
       <DeleteProduct productId={productId} />
     </TableCell>
   </>
 )
 
-function DeleteProduct({ productId }: { productId: string }) {
+const DeleteProduct = ({ productId }: { productId: string }) => {
   const deleteProduct = deleteProductAction.bind(null, { productId })
   return (
-    <FormContainer action={deleteProduct}>
-      <IconButton actionType="delete" />
+    <FormContainer action={deleteProduct} refresh>
+      <IconButton buttonType="submit" actionType="delete" />
     </FormContainer>
   )
 }
@@ -2902,12 +3046,14 @@ function DeleteProduct({ productId }: { productId: string }) {
 - utils/supabase.ts
 
 ```ts
-export const deleteImage = (url: string) => {
+export const deleteImage = async (url: string) => {
   const imageName = url.split("/").pop()
-  if (!imageName) throw new Error("Invalid URL")
-  return supabase.storage.from(bucket).remove([imageName])
+  if (!imageName) throw new Error("Invalid url")
+  return await supabase.storage.from(bucket).remove([imageName])
 }
 ```
+
+- actions.ts
 
 ```ts
 export const deleteProductAction = async (prevState: { productId: string }) => {
@@ -2935,26 +3081,38 @@ export const deleteProductAction = async (prevState: { productId: string }) => {
 ```ts
 export const fetchAdminProductDetails = async (productId: string) => {
   await getAdminUser()
-  const product = await db.product.findUnique({
+  const product = await prisma.product.findUnique({
     where: {
       id: productId,
     },
   })
   if (!product) redirect("/admin/products")
+
   return product
 }
 
 export const updateProductAction = async (
   prevState: any,
   formData: FormData,
-) => {
-  return { message: "Product updated successfully" }
+): Promise<ActionFunctionResult> => {
+  await getAdminUser()
+  try {
+    return { message: "Product updated successfully", type: "success" }
+  } catch (error) {
+    return renderError(error)
+  }
 }
+
 export const updateProductImageAction = async (
   prevState: any,
   formData: FormData,
-) => {
-  return { message: "Product Image updated successfully" }
+): Promise<ActionFunctionResult> => {
+  await getAdminUser()
+  try {
+    return { message: "Image updated successfully", type: "success" }
+  } catch (error) {
+    return renderError(error)
+  }
 }
 ```
 
@@ -2963,58 +3121,74 @@ export const updateProductImageAction = async (
 - app/admin/products/[id]/edit/page.tsx
 
 ```tsx
-import { fetchAdminProductDetails, updateProductAction } from "@/utils/actions"
+import { SubmitButton } from "@/components/form/Buttons"
+import CheckboxInput from "@/components/form/CheckboxInput"
 import FormContainer from "@/components/form/FormContainer"
 import FormInput from "@/components/form/FormInput"
 import PriceInput from "@/components/form/PriceInput"
 import TextAreaInput from "@/components/form/TextAreaInput"
-import { SubmitButton } from "@/components/form/Buttons"
-import CheckboxInput from "@/components/form/CheckboxInput"
-async function EditProductPage({ params }: { params: { id: string } }) {
-  const { id } = params
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { fetchAdminProductDetails, updateProductAction } from "@/utils/actions"
+
+const EditProductPage = async ({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) => {
+  const { id } = await params
+  // console.log("Product ID: ", id)
   const product = await fetchAdminProductDetails(id)
-  const { name, company, description, featured, price } = product
+  const { name, company, price, description, featured } = product
   return (
     <section>
-      <h1 className="text-2xl font-semibold mb-8 capitalize">update product</h1>
-      <div className="border p-8 rounded-md">
-        {/* Image Input Container */}
-        <FormContainer action={updateProductAction}>
-          <div className="grid gap-4 md:grid-cols-2 my-4">
-            <input type="hidden" name="id" value={id} />
-            <FormInput
-              type="text"
-              name="name"
-              label="product name"
-              defaultValue={name}
+      <Card>
+        <CardHeader>
+          <CardTitle className="capitalize">update product</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* IMAGE FORM INPUT */}
+          {/* OTHER FORM INPUTS */}
+          <FormContainer action={updateProductAction}>
+            <div className="grid gap-5 md:grid-cols-2 my-4">
+              <input type="hidden" name="id" value={id} />
+              <FormInput
+                type="text"
+                name="name"
+                label="product name"
+                defaultValue={name}
+              />
+              <FormInput
+                type="text"
+                name="company"
+                label="company"
+                defaultValue={company}
+              />
+              <PriceInput defaultValue={price} />
+            </div>
+            <TextAreaInput
+              name="description"
+              labelText="product description"
+              defaultValue={description}
             />
-            <FormInput
-              type="text"
-              name="company"
-              label="company"
-              defaultValue={company}
-            />
+            <div className="mt-5">
+              <CheckboxInput
+                name="featured"
+                labelText="featured"
+                defaultChecked={featured}
+              />
+            </div>
 
-            <PriceInput defaultValue={price} />
-          </div>
-          <TextAreaInput
-            name="description"
-            labelText="product description"
-            defaultValue={description}
-          />
-          <div className="mt-6">
-            <CheckboxInput
-              name="featured"
-              label="featured"
-              defaultChecked={featured}
-            />
-          </div>
-          <SubmitButton text="update product" className="mt-8" />
-        </FormContainer>
-      </div>
+            <div className="mt-10">
+              {/* Submit button must be inside form to work useFormStatus hook */}
+              <SubmitButton text="update product" />
+            </div>
+          </FormContainer>
+        </CardContent>
+      </Card>
     </section>
   )
 }
+
 export default EditProductPage
 ```
 
@@ -3048,6 +3222,21 @@ export const updateProductAction = async (
     return renderError(error)
   }
 }
+```
+
+### Problem with shadcn Checkbox component update
+
+Radix Chekbox is an uncontrolled component which doesn't update value if page is not refreshed.
+The fix is to set a key to force remount.
+[Althouh the standard way is using controlled checkbox using react useState]
+
+```tsx
+<Checkbox
+  key={defaultChecked ? "checked" : "unchecked"} // add a key to force re-render (special for checkbox)
+  id={name}
+  name={name}
+  defaultChecked={defaultChecked || false}
+/>
 ```
 
 ### UpdateImageContainer Component
@@ -3091,6 +3280,7 @@ function ImageInputContainer(props: ImageInputContainerProps) {
       >
         {text}
       </Button>
+
       {isUpdateFormVisible && (
         <div className="max-w-md mt-4">
           <FormContainer action={action}>
@@ -3196,6 +3386,7 @@ export default loading
 
 ```prisma
 model Product {
+....
 favorites Favorite[]
 }
 
@@ -3276,28 +3467,15 @@ export const fetchFavoriteId = async ({ productId }: { productId: string }) => {
   return favorite?.id || null
 }
 
-export const toggleFavoriteAction = async () => {
-  return { message: "toggle favorite action" }
+export const toggleFavoriteAction = async (
+  prevState: any,
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
+  return {
+    message: "Favorite updated successfully",
+    type: "success",
+  }
 }
-```
-
-### FavoriteToggleButton
-
-- components/products/FavoriteToggleButton.tsx
-
-```tsx
-import { auth } from "@clerk/nextjs/server"
-import { CardSignInButton } from "../form/Buttons"
-import { fetchFavoriteId } from "@/utils/actions"
-import FavoriteToggleForm from "./FavoriteToggleForm"
-async function FavoriteToggleButton({ productId }: { productId: string }) {
-  const { userId } = auth()
-  if (!userId) return <CardSignInButton />
-  const favoriteId = await fetchFavoriteId({ productId })
-
-  return <FavoriteToggleForm favoriteId={favoriteId} productId={productId} />
-}
-export default FavoriteToggleButton
 ```
 
 ### FavoriteToggleForm
@@ -3332,6 +3510,26 @@ function FavoriteToggleForm({
   )
 }
 export default FavoriteToggleForm
+```
+
+### FavoriteToggleButton
+
+- components/products/FavoriteToggleButton.tsx
+
+```tsx
+import { auth } from "@clerk/nextjs/server"
+import { CardSignInButton } from "../form/Buttons"
+import { fetchFavoriteId } from "@/utils/actions"
+import FavoriteToggleForm from "./FavoriteToggleForm"
+async function FavoriteToggleButton({ productId }: { productId: string }) {
+  const { userId } = auth()
+  if (!userId) return <CardSignInButton />
+
+  const favoriteId = await fetchFavoriteId({ productId })
+
+  return <FavoriteToggleForm favoriteId={favoriteId} productId={productId} />
+}
+export default FavoriteToggleButton
 ```
 
 ### FavoriteToggleForm
@@ -3372,6 +3570,8 @@ export const toggleFavoriteAction = async (prevState: {
 - test in home, products and single product page
 
 ### FetchUserFavorites
+
+actions.ts
 
 ```ts
 export const fetchUserFavorites = async () => {
@@ -3465,24 +3665,22 @@ function ShareButton({ productId, name }: { productId: string; name: string }) {
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="icon" className="p-2">
+          <span className="sr-only">Share</span>
           <LuShare2 />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        sideOffset={10}
-        className="flex items-center gap-x-2 justify-center w-full"
-      >
-        <TwitterShareButton url={shareLink} title={name}>
-          <TwitterIcon size={32} round />
-        </TwitterShareButton>
-        <LinkedinShareButton url={shareLink} title={name}>
-          <LinkedinIcon size={32} round />
-        </LinkedinShareButton>
-        <EmailShareButton url={shareLink} subject={name}>
-          <EmailIcon size={32} round />
-        </EmailShareButton>
+      <PopoverContent side="top" align="end" sideOffset={10} className="w-full">
+        <div className="flex items-center gap-x-2 justify-center w-full">
+          <XShareButton url={shareUrl} title={name}>
+            <XIcon size={32} round />
+          </XShareButton>
+          <LinkedinShareButton url={shareUrl} title={name}>
+            <LinkedinIcon size={32} round />
+          </LinkedinShareButton>
+          <EmailShareButton url={shareUrl} subject={name}>
+            <EmailIcon size={32} round />
+          </EmailShareButton>
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -3498,9 +3696,9 @@ import ShareButton from "@/components/single-product/ShareButton"
 return (
   <div className="flex gap-x-8 items-center">
     <h1 className="capitalize text-3xl font-bold">{name}</h1>
-    <div className="flex items-center gap-x-2">
-      <FavoriteToggleButton productId={params.id} />
-      <ShareButton name={product.name} productId={params.id} />
+    <div className="flex gap-x-4 items-center">
+      <FavoriteToggleButton productId={id} />
+      <ShareButton productId={id} name={name} />
     </div>
   </div>
 )
