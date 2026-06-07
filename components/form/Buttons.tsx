@@ -49,7 +49,7 @@ export const IconButton = ({
   buttonType,
 }: {
   actionType: ActionType
-  buttonType: "button" | "submit"
+  buttonType?: "button" | "submit"
 }) => {
   const { pending } = useFormStatus()
 
@@ -66,7 +66,7 @@ export const IconButton = ({
   }
   return (
     <Button
-      type={buttonType}
+      type={buttonType || "button"}
       size="icon"
       variant="link"
       className="p-2 cursor-pointer"
@@ -117,5 +117,19 @@ export const CardSubmitButton = ({ isFavorite }: { isFavorite: boolean }) => {
         <FaRegHeart />
       )}
     </Button>
+  )
+}
+
+export const ProductSignInButton = ({
+  buttonText,
+}: {
+  buttonText?: string
+}) => {
+  return (
+    <SignInButton mode="modal">
+      <Button type="button" size="default" className="mt-8">
+        {buttonText || "Please Sign In"}
+      </Button>
+    </SignInButton>
   )
 }

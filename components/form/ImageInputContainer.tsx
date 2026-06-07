@@ -6,6 +6,7 @@ import ImageInput from "./ImageInput"
 import { SubmitButton } from "./Buttons"
 import { Button } from "../ui/button"
 import { useState } from "react"
+import { actionFunction } from "@/utils/types"
 
 type ImageInputContainerProps = {
   image: string

@@ -1,9 +1,10 @@
 import Link from "next/link"
 import { Button } from "../ui/button"
 import { LucideShoppingCart } from "lucide-react"
+import { fetchCartItems } from "@/utils/actions"
 
 const CartButton = async () => {
-  const numItemsInCart = 9
+  const numItemsInCart = await fetchCartItems()
   return (
     <Button asChild variant="outline" size="icon" className="relative">
       <Link href="/cart">

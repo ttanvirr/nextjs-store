@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useActionState, useEffect } from "react"
+import React, { startTransition, use, useActionState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { actionFunction, ActionFunctionResult } from "@/utils/types"
 
 const initialState: ActionFunctionResult = {
   message: "",
@@ -29,15 +30,13 @@ const FormContainer = ({
       toast.success(state.message)
       if (redirectTo) {
         router.push(redirectTo)
-      }
-      if (refresh) {
+      } else if (refresh) {
         router.refresh()
       }
-    }
-    if (state.type === "error") {
+    } else if (state.type === "error") {
       toast.error(state.message)
     }
-  }, [state])
+  }, [state, router, redirectTo, refresh])
 
   return <form action={formAction}>{children}</form>
 }

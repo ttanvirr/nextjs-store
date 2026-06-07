@@ -3713,14 +3713,14 @@ model Product {
 model Review {
   id        String   @id @default(uuid())
   clerkId  String
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   rating Int
   comment String
   authorName String
   authorImageUrl String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId String
 }
 ```
 
@@ -3728,18 +3728,18 @@ model Review {
 npx prisma db push
 ```
 
-- restar the server
+- restart the server
 
 ### Review Components and Actions
 
 - actions.ts
 
 ```ts
-export const createReviewAction = async (
-  prevState: any,
-  formData: FormData,
-) => {
-  return { message: "review submitted successfully" }
+export const createReviewAction = async (prev: any, formData: FormData) => {
+  return {
+    message: "Review submitted successfully",
+    type: "success",
+  }
 }
 
 export const fetchProductReviews = async () => {}
@@ -3759,15 +3759,17 @@ export const fetchProductRating = async () => {}
 
 ### RatingInput Component
 
+components/reviews/RatingInput.tsx
+
 ```tsx
-import { Label } from "@/components/ui/label"
+import { Field, FieldLabel } from "../ui/field"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "../ui/select"
 
 const RatingInput = ({
   name,
@@ -3782,10 +3784,10 @@ const RatingInput = ({
   }).reverse()
 
   return (
-    <div className="mb-2 max-w-xs">
-      <Label htmlFor={name} className="capitalize">
+    <Field>
+      <FieldLabel htmlFor={name} className="capitalize">
         {labelText || name}
-      </Label>
+      </FieldLabel>
       <Select defaultValue={numbers[0]} name={name} required>
         <SelectTrigger>
           <SelectValue />
@@ -3800,7 +3802,7 @@ const RatingInput = ({
           })}
         </SelectContent>
       </Select>
-    </div>
+    </Field>
   )
 }
 
@@ -3809,20 +3811,25 @@ export default RatingInput
 
 ### SubmitReview Component
 
+components/reviews/SubmitReview.tsx
+
 ```tsx
 "use client"
-import { useState } from "react"
-import { SubmitButton } from "@/components/form/Buttons"
-import FormContainer from "@/components/form/FormContainer"
-import { Card } from "@/components/ui/card"
-import RatingInput from "@/components/reviews/RatingInput"
-import TextAreaInput from "@/components/form/TextAreaInput"
-import { Button } from "@/components/ui/button"
+
 import { createReviewAction } from "@/utils/actions"
+import FormContainer from "../form/FormContainer"
+import { Card } from "../ui/card"
+import { SubmitButton } from "../form/Buttons"
+import TextAreaInput from "../form/TextAreaInput"
+import RatingInput from "./RatingInput"
+import { useState } from "react"
+import { Button } from "../ui/button"
 import { useUser } from "@clerk/nextjs"
-function SubmitReview({ productId }: { productId: string }) {
-  const [isReviewFormVisible, setIsReviewFormVisible] = useState(false)
+
+const SubmitReview = ({ productId }: { productId: string }) => {
   const { user } = useUser()
+  const [isReviewFormVisible, setIsReviewFormVisible] = useState(false)
+
   return (
     <div>
       <Button
@@ -3830,29 +3837,32 @@ function SubmitReview({ productId }: { productId: string }) {
         className="capitalize"
         onClick={() => setIsReviewFormVisible((prev) => !prev)}
       >
-        leave review
+        leave a review
       </Button>
+
       {isReviewFormVisible && (
         <Card className="p-8 mt-8">
           <FormContainer action={createReviewAction}>
-            <input type="hidden" name="productId" value={productId} />
-            <input
-              type="hidden"
-              name="authorName"
-              value={user?.firstName || "user"}
-            />
-            <input
-              type="hidden"
-              name="authorImageUrl"
-              value={user?.imageUrl || ""}
-            />
-            <RatingInput name="rating" />
-            <TextAreaInput
-              name="comment"
-              labelText="feedback"
-              defaultValue="Outstanding product!!!"
-            />
-            <SubmitButton className="mt-4" />
+            <div className="flex flex-col gap-y-5">
+              <input type="hidden" name="productId" value={productId} />
+              <input
+                type="hidden"
+                name="authorName"
+                value={user?.firstName || "user"}
+              />
+              <input
+                type="hidden"
+                name="authorImageUrl"
+                value={user?.imageUrl || ""}
+              />
+              <RatingInput name="rating" />
+              <TextAreaInput
+                name="comment"
+                labelText="feedback"
+                defaultValue="Outstanding product!"
+              />
+            </div>
+            <SubmitButton text="submit review" className="mt-4" />
           </FormContainer>
         </Card>
       )}
@@ -3908,52 +3918,54 @@ export const reviewSchema = z.object({
 
 ```ts
 export const createReviewAction = async (
-  prevState: any,
+  prev: any,
   formData: FormData,
-) => {
+): Promise<ActionFunctionResult> => {
   const user = await getAuthUser()
+
   try {
     const rawData = Object.fromEntries(formData)
+    const validatedFields = validateWithZodSchema(ReviewSchema, rawData)
 
-    const validatedFields = validateWithZodSchema(reviewSchema, rawData)
-
-    await db.review.create({
+    await prisma.review.create({
       data: {
         ...validatedFields,
         clerkId: user.id,
       },
     })
     revalidatePath(`/products/${validatedFields.productId}`)
-    return { message: "Review submitted successfully" }
+    return {
+      message: "Review submitted successfully",
+      type: "success",
+    }
   } catch (error) {
     return renderError(error)
   }
 }
 ```
 
+- submit a review and check if prisma studio is showing the review record
+
 ### Rating Component
 
 ```tsx
-import { FaStar, FaRegStar } from "react-icons/fa"
+import { FaRegStar, FaStar } from "react-icons/fa"
 
-function Rating({ rating }: { rating: number }) {
-  // rating = 2
-  // 1 <= 2 true
-  // 2 <= 2 true
-  // 3 <= 2 false
-  // ....
+const Rating = ({ rating }: { rating: number }) => {
   const stars = Array.from({ length: 5 }, (_, i) => i + 1 <= rating)
+
+  // Example:
+  // rating = 3
+  // stars = [true, true, true, false, false]
 
   return (
     <div className="flex items-center gap-x-1">
       {stars.map((isFilled, i) => {
-        const className = `w-3 h-3 ${
-          isFilled ? "text-primary" : "text-gray-400"
-        }`
+        const className = `w-3 h-3 ${isFilled ? "text-primary" : "text-gray-400"}`
         return isFilled ? (
-          <FaStar className={className} key={i} />
+          <FaStar key={i} className={className} />
         ) : (
-          <FaRegStar className={className} key={i} />
+          <FaRegStar key={i} className={className} />
         )
       })}
     </div>
@@ -3964,6 +3976,8 @@ export default Rating
 ```
 
 ### Comment Component
+
+components/reviews/Comment.tsx
 
 ```tsx
 "use client"
@@ -4000,9 +4014,11 @@ export default Comment
 
 ### Fetch Product Reviews
 
+actions.ts
+
 ```ts
 export const fetchProductReviews = async (productId: string) => {
-  const reviews = await db.review.findMany({
+  const reviews = await prisma.review.findMany({
     where: {
       productId,
     },
@@ -4010,8 +4026,8 @@ export const fetchProductReviews = async (productId: string) => {
       createdAt: "desc",
     },
   })
+
   return reviews
-}
 ```
 
 ### Product Reviews
@@ -4094,9 +4110,9 @@ function ReviewCard({ reviewInfo, children }: ReviewCardProps) {
 export default ReviewCard
 ```
 
-- next.config.mjs
+- next.config.ts
 
-```mjs
+```ts
  {
   protocol: 'https',
   hostname: 'img.clerk.com',
@@ -4105,9 +4121,11 @@ export default ReviewCard
 
 ### fetchProductRating
 
+actions.ts
+
 ```ts
 export const fetchProductRating = async (productId: string) => {
-  const result = await db.review.groupBy({
+  const result = await prisma.review.groupBy({
     by: ["productId"],
     _avg: {
       rating: true,
@@ -4141,7 +4159,7 @@ const { rating, count } = await fetchProductRating(productId)
 ```ts
 export const fetchProductReviewsByUser = async () => {
   const user = await getAuthUser()
-  const reviews = await db.review.findMany({
+  const reviews = await prisma.review.findMany({
     where: {
       clerkId: user.id,
     },
@@ -4159,20 +4177,26 @@ export const fetchProductReviewsByUser = async () => {
   })
   return reviews
 }
-export const deleteReviewAction = async (prevState: { reviewId: string }) => {
+
+export const deleteReviewAction = async (
+  prevState: { reviewId: string },
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
   const { reviewId } = prevState
   const user = await getAuthUser()
 
   try {
-    await db.review.delete({
+    await prisma.review.delete({
       where: {
         id: reviewId,
         clerkId: user.id,
       },
     })
-
     revalidatePath("/reviews")
-    return { message: "Review deleted successfully" }
+    return {
+      message: "Review deleted successfully",
+      type: "success",
+    }
   } catch (error) {
     return renderError(error)
   }
@@ -4184,7 +4208,7 @@ export const deleteReviewAction = async (prevState: { reviewId: string }) => {
 - setup "reviews" link in utils/links.ts
 - create app/reviews/page.tsx and app/reviews/loading.tsx
 
-page.tsx
+app/reviews/page.tsx
 
 ```tsx
 import { deleteReviewAction, fetchProductReviewsByUser } from "@/utils/actions"
@@ -4274,7 +4298,7 @@ actions.ts
 
 ```ts
 export const findExistingReview = async (userId: string, productId: string) => {
-  return db.review.findFirst({
+  return prisma.review.findFirst({
     where: {
       clerkId: userId,
       productId,
@@ -4290,7 +4314,7 @@ import { fetchSingleProduct, findExistingReview } from "@/utils/actions"
 import { auth } from "@clerk/nextjs/server"
 
 async function SingleProductPage({ params }: { params: { id: string } }) {
-  const { userId } = auth()
+  const { userId } = await auth()
   const reviewDoesNotExist =
     userId && !(await findExistingReview(userId, product.id))
 
@@ -4364,9 +4388,9 @@ export const updateCartItemAction = async () => {}
 
 ```ts
 export const fetchCartItems = async () => {
-  const { userId } = auth()
+  const { userId } = await auth()
 
-  const cart = await db.cart.findFirst({
+  const cart = await prisma.cart.findFirst({
     where: {
       clerkId: userId ?? "",
     },
@@ -4391,11 +4415,15 @@ async function CartButton() {
 - components/form/Buttons.tsx
 
 ```tsx
-export const ProductSignInButton = () => {
+export const ProductSignInButton = ({
+  buttonText,
+}: {
+  buttonText?: string
+}) => {
   return (
     <SignInButton mode="modal">
       <Button type="button" size="default" className="mt-8">
-        Please Sign In
+        {buttonText || "Please Sign In"}
       </Button>
     </SignInButton>
   )
@@ -4413,9 +4441,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "../ui/select"
 
-export enum Mode {
+export const enum Mode {
   SingleProduct = "singleProduct",
   CartItem = "cartItem",
 }
@@ -4433,29 +4461,29 @@ type SelectCartItemAmountProps = {
   isLoading: boolean
 }
 
-function SelectProductAmount(
+const SelectProductAmount = (
   props: SelectProductAmountProps | SelectCartItemAmountProps,
-) {
+) => {
   const { mode, amount, setAmount } = props
-
-  const cartItem = mode === Mode.CartItem
+  const isCarItem = mode === Mode.CartItem
 
   return (
     <>
-      <h4 className="mb-2">Amount : </h4>
+      <h4 className="mb-2">Amount:</h4>
       <Select
         defaultValue={amount.toString()}
         onValueChange={(value) => setAmount(Number(value))}
-        disabled={cartItem ? props.isLoading : false}
+        disabled={isCarItem ? props.isLoading : false}
       >
-        <SelectTrigger className={cartItem ? "w-[100px]" : "w-[150px]"}>
+        <SelectTrigger className={isCarItem ? "w-25" : "w-38"}>
           <SelectValue placeholder={amount} />
         </SelectTrigger>
+
         <SelectContent>
-          {Array.from({ length: cartItem ? amount + 10 : 10 }, (_, index) => {
-            const selectValue = (index + 1).toString()
+          {Array.from({ length: isCarItem ? amount + 10 : 10 }, (_, i) => {
+            const selectValue = (i + 1).toString()
             return (
-              <SelectItem key={index} value={selectValue}>
+              <SelectItem key={i} value={selectValue}>
                 {selectValue}
               </SelectItem>
             )
@@ -4465,10 +4493,31 @@ function SelectProductAmount(
     </>
   )
 }
+
 export default SelectProductAmount
 ```
 
 ### AddToCart Component
+
+actions.ts
+
+```ts
+export const addToCartAction = async (
+  prevState: any,
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
+  try {
+    return {
+      message: "Product added to cart",
+      type: "success",
+    }
+  } catch (error) {
+    return renderError(error)
+  }
+}
+```
+
+components/single-product/AddToCart.tsx
 
 ```tsx
 "use client"
@@ -4492,7 +4541,7 @@ function AddToCart({ productId }: { productId: string }) {
         setAmount={setAmount}
       />
       {userId ? (
-        <FormContainer action={addToCartAction}>
+        <FormContainer action={addToCartAction} redirectTo="/cart">
           <input type="hidden" name="productId" value={productId} />
           <input type="hidden" name="amount" value={amount} />
           <SubmitButton text="add to cart" size="default" className="mt-8" />
@@ -4506,7 +4555,7 @@ function AddToCart({ productId }: { productId: string }) {
 export default AddToCart
 ```
 
-### AddToCart Action
+### AddToCart Actions
 
 - actions.ts
 
@@ -4514,7 +4563,7 @@ export default AddToCart
 import { Cart } from "@prisma/client"
 
 const fetchProduct = async (productId: string) => {
-  const product = await db.product.findUnique({
+  const product = await prisma.product.findUnique({
     where: {
       id: productId,
     },
@@ -4525,6 +4574,7 @@ const fetchProduct = async (productId: string) => {
   }
   return product
 }
+
 const includeProductClause = {
   cartItems: {
     include: {
@@ -4540,7 +4590,7 @@ export const fetchOrCreateCart = async ({
   userId: string
   errorOnFailure?: boolean
 }) => {
-  let cart = await db.cart.findFirst({
+  let cart = await prisma.cart.findFirst({
     where: {
       clerkId: userId,
     },
@@ -4552,7 +4602,7 @@ export const fetchOrCreateCart = async ({
   }
 
   if (!cart) {
-    cart = await db.cart.create({
+    cart = await prisma.cart.create({
       data: {
         clerkId: userId,
       },
@@ -4572,7 +4622,7 @@ const updateOrCreateCartItem = async ({
   cartId: string
   amount: number
 }) => {
-  let cartItem = await db.cartItem.findFirst({
+  let cartItem = await prisma.cartItem.findFirst({
     where: {
       productId,
       cartId,
@@ -4580,7 +4630,7 @@ const updateOrCreateCartItem = async ({
   })
 
   if (cartItem) {
-    cartItem = await db.cartItem.update({
+    cartItem = await prisma.cartItem.update({
       where: {
         id: cartItem.id,
       },
@@ -4589,14 +4639,14 @@ const updateOrCreateCartItem = async ({
       },
     })
   } else {
-    cartItem = await db.cartItem.create({
+    cartItem = await prisma.cartItem.create({
       data: { amount, productId, cartId },
     })
   }
 }
 
 export const updateCart = async (cart: Cart) => {
-  const cartItems = await db.cartItem.findMany({
+  const cartItems = await prisma.cartItem.findMany({
     where: {
       cartId: cart.id,
     },
@@ -4616,7 +4666,7 @@ export const updateCart = async (cart: Cart) => {
   const shipping = cartTotal ? cart.shipping : 0
   const orderTotal = cartTotal + tax + shipping
 
-  await db.cart.update({
+  const currentCart = await prisma.cart.update({
     where: {
       id: cart.id,
     },
@@ -4626,10 +4676,15 @@ export const updateCart = async (cart: Cart) => {
       tax,
       orderTotal,
     },
+    include: includeProductClause,
   })
+  return currentCart
 }
 
-export const addToCartAction = async (prevState: any, formData: FormData) => {
+export const addToCartAction = async (
+  prevState: any,
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
   const user = await getAuthUser()
   try {
     const productId = formData.get("productId") as string
@@ -4638,10 +4693,15 @@ export const addToCartAction = async (prevState: any, formData: FormData) => {
     const cart = await fetchOrCreateCart({ userId: user.id })
     await updateOrCreateCartItem({ productId, cartId: cart.id, amount })
     await updateCart(cart)
+    revalidatePath("/cart")
+    return {
+      message: "Product added to cart",
+      type: "success",
+    }
   } catch (error) {
     return renderError(error)
   }
-  redirect("/cart")
+  // redirect("/cart")
 }
 ```
 
@@ -4703,7 +4763,7 @@ function CartTotals({ cart }: { cart: Cart }) {
   const { cartTotal, shipping, tax, orderTotal } = cart
   return (
     <div>
-      <Card className="p-8 ">
+      <Card className="p-8 gap-y-4">
         <CartTotalRow label="Subtotal" amount={cartTotal} />
         <CartTotalRow label="Shipping" amount={shipping} />
         <CartTotalRow label="Tax" amount={tax} />
@@ -4741,58 +4801,6 @@ function CartTotalRow({
 export default CartTotals
 ```
 
-### Cart Item Columns - 1,2 and 4
-
-- cart/CartItemColumns.tsx
-
-```tsx
-import { formatCurrency } from "@/utils/format"
-import Image from "next/image"
-import Link from "next/link"
-export const FirstColumn = ({
-  name,
-  image,
-}: {
-  image: string
-  name: string
-}) => {
-  return (
-    <div className="relative h-24 w-24 sm:h-32 sm:w-32">
-      <Image
-        src={image}
-        alt={name}
-        fill
-        sizes="(max-width:768px) 100vw,(max-width:1200px) 50vw,33vw"
-        priority
-        className="w-full rounded-md object-cover"
-      />
-    </div>
-  )
-}
-export const SecondColumn = ({
-  name,
-  company,
-  productId,
-}: {
-  name: string
-  company: string
-  productId: string
-}) => {
-  return (
-    <div className=" sm:w-48">
-      <Link href={`/products/${productId}`}>
-        <h3 className="capitalize font-medium hover:underline">{name}</h3>
-      </Link>
-      <h4 className="mt-2 capitalize text-xs">{company}</h4>
-    </div>
-  )
-}
-
-export const FourthColumn = ({ price }: { price: number }) => {
-  return <p className="font-medium md:ml-auto">{formatCurrency(price)}</p>
-}
-```
-
 ### CartItemsList Component
 
 - utils/types.ts
@@ -4806,11 +4814,14 @@ export type CartItemWithProduct = Prisma.CartItemGetPayload<{
 ```
 
 ```tsx
-import { Card } from "@/components/ui/card"
-import { FirstColumn, SecondColumn, FourthColumn } from "./CartItemColumns"
-import ThirdColumn from "./ThirdColumn"
 import { CartItemWithProduct } from "@/utils/types"
-function CartItemsList({ cartItems }: { cartItems: CartItemWithProduct[] }) {
+import { Card } from "../ui/card"
+import Image from "next/image"
+import Link from "next/link"
+import { formatCurrency } from "@/utils/format"
+import ThirdColumn from "./ThirdColumn"
+
+const CartItemsList = ({ cartItems }: { cartItems: CartItemWithProduct[] }) => {
   return (
     <div>
       {cartItems.map((cartItem) => {
@@ -4819,18 +4830,42 @@ function CartItemsList({ cartItems }: { cartItems: CartItemWithProduct[] }) {
         return (
           <Card
             key={id}
-            className="flex flex-col gap-y-4 md:flex-row flex-wrap p-6 mb-8 gap-x-4"
+            className="p-6 mb-8 flex flex-col gap-y-4 md:flex-row flex-wrap gap-x-4"
           >
-            <FirstColumn image={image} name={name} />
-            <SecondColumn name={name} company={company} productId={productId} />
+            {/* FIRST COLUMN */}
+            <div className="relative w-24 h-24 sm:w-32 sm:h-32">
+              <Image
+                src={image}
+                alt={name}
+                fill
+                sizes="(max-width:768px) 100vw, (max-width:1200px) 50vw, 33vw"
+                loading="eager"
+                className="w-full h-full rounded-md object-cover"
+              />
+            </div>
+
+            {/* SECOND COLUMN */}
+            <div className="sm:w-48">
+              <Link href={`products/${productId}`}>
+                <h3 className="capitalize font-medium hover:underline">
+                  {name}
+                </h3>
+              </Link>
+              <h4 className="capitalize text-xs mt-2">{company}</h4>
+            </div>
+
+            {/* THIRD COLUMN */}
             <ThirdColumn id={id} quantity={amount} />
-            <FourthColumn price={price} />
+
+            {/* FOURTH COLUMN */}
+            <p className="font-medium md:ml-auto">{formatCurrency(price)}</p>
           </Card>
         )
       })}
     </div>
   )
 }
+
 export default CartItemsList
 ```
 
@@ -4844,13 +4879,21 @@ actions.ts
 export const removeCartItemAction = async (
   prevState: any,
   formData: FormData,
-) => {
-  return { message: "Item removed from cart" }
+): Promise<ActionFunctionResult> => {
+  try {
+    return {
+      message: "Product removed from cart",
+      type: "success",
+    }
+  } catch (error) {
+    return renderError(error)
+  }
 }
 ```
 
 ```tsx
 "use client"
+
 import { useState } from "react"
 import SelectProductAmount from "../single-product/SelectProductAmount"
 import { Mode } from "../single-product/SelectProductAmount"
@@ -4874,7 +4917,7 @@ function ThirdColumn({ quantity, id }: { quantity: number; id: string }) {
         mode={Mode.CartItem}
         isLoading={false}
       />
-      <FormContainer action={removeCartItemAction}>
+      <FormContainer action={removeCartItemAction} refresh>
         <input type="hidden" name="id" value={id} />
         <SubmitButton size="sm" className="mt-4" text="remove" />
       </FormContainer>
@@ -4889,31 +4932,38 @@ export default ThirdColumn
 - actions.ts
 
 ```ts
-eexport const removeCartItemAction = async (
+export const removeCartItemAction = async (
   prevState: any,
-  formData: FormData
-) => {
-  const user = await getAuthUser();
+  formData: FormData,
+): Promise<ActionFunctionResult> => {
+  const user = await getAuthUser()
   try {
-    const cartItemId = formData.get('id') as string;
+    const cartItemId = formData.get("id") as string
+
     const cart = await fetchOrCreateCart({
       userId: user.id,
       errorOnFailure: true,
-    });
-    await db.cartItem.delete({
+    })
+
+    await prisma.cartItem.delete({
       where: {
         id: cartItemId,
         cartId: cart.id,
       },
-    });
+    })
 
-    await updateCart(cart);
-    revalidatePath('/cart');
-    return { message: 'Item removed from cart' };
+    await updateCart(cart)
+
+    // revalidatePath("/cart")
+
+    return {
+      message: "Product removed from cart",
+      type: "success",
+    }
   } catch (error) {
-    return renderError(error);
+    return renderError(error)
   }
-};
+}
 ```
 
 ### UpdateCartItem Action
@@ -4922,20 +4972,20 @@ eexport const removeCartItemAction = async (
 
 ```ts
 export const updateCartItemAction = async ({
-  amount,
   cartItemId,
+  amount,
 }: {
-  amount: number
   cartItemId: string
-}) => {
+  amount: number
+}): Promise<ActionFunctionResult> => {
   const user = await getAuthUser()
-
   try {
     const cart = await fetchOrCreateCart({
       userId: user.id,
       errorOnFailure: true,
     })
-    await db.cartItem.update({
+
+    await prisma.cartItem.update({
       where: {
         id: cartItemId,
         cartId: cart.id,
@@ -4944,9 +4994,14 @@ export const updateCartItemAction = async ({
         amount,
       },
     })
+
     await updateCart(cart)
     revalidatePath("/cart")
-    return { message: "cart updated" }
+
+    return {
+      message: "Cart updated successfully",
+      type: "success",
+    }
   } catch (error) {
     return renderError(error)
   }
@@ -4957,48 +5012,48 @@ export const updateCartItemAction = async ({
 
 ```tsx
 "use client"
+
 import { useState } from "react"
-import SelectProductAmount from "../single-product/SelectProductAmount"
-import { Mode } from "../single-product/SelectProductAmount"
+import SelectProductAmount, {
+  Mode,
+} from "../single-product/SelectProductAmount"
 import FormContainer from "../form/FormContainer"
-import { SubmitButton } from "../form/Buttons"
 import { removeCartItemAction, updateCartItemAction } from "@/utils/actions"
-import { useToast } from "../ui/use-toast"
-import { ReloadIcon } from "@radix-ui/react-icons"
-import { Button } from "../ui/button"
+import { SubmitButton } from "../form/Buttons"
+import { toast } from "sonner"
 
-function ThirdColumn({ quantity, id }: { quantity: number; id: string }) {
+const ThirdColumn = ({ id, quantity }: { id: string; quantity: number }) => {
   const [amount, setAmount] = useState(quantity)
-
   const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
-  const handleAmountChange = async (value: number) => {
+
+  const handleChangeAmount = async (value: number) => {
     setIsLoading(true)
-    toast({ description: "Calculating..." })
-    const result = await updateCartItemAction({
-      amount: value,
-      cartItemId: id,
-    })
+    toast.loading("Calculating...")
+    const result = await updateCartItemAction({ cartItemId: id, amount: value })
+    setIsLoading(false)
+    toast.dismiss()
+    toast.success("", { description: result.message })
     setAmount(value)
-    toast({ description: result.message })
     setIsLoading(false)
   }
 
   return (
     <div className="md:ml-8">
       <SelectProductAmount
-        amount={amount}
-        setAmount={handleAmountChange}
         mode={Mode.CartItem}
+        amount={amount}
+        setAmount={handleChangeAmount}
         isLoading={isLoading}
       />
-      <FormContainer action={removeCartItemAction}>
+
+      <FormContainer action={removeCartItemAction} refresh>
         <input type="hidden" name="id" value={id} />
-        <SubmitButton size="sm" className="mt-4" text="remove" />
+        <SubmitButton text="remove" size="sm" className="mt-4" />
       </FormContainer>
     </div>
   )
 }
+
 export default ThirdColumn
 ```
 
@@ -5093,7 +5148,7 @@ export default CartPage
 model Order {
   id        String   @id @default(uuid())
   clerkId  String
-  products Int  @default(0)
+  productsCount Int  @default(0)
   orderTotal Int @default(0)
   tax Int @default(0)
   shipping Int @default(0)
@@ -5117,7 +5172,7 @@ export const createOrderAction = async (prevState: any, formData: FormData) => {
     const order = await db.order.create({
       data: {
         clerkId: user.id,
-        products: cart.numItemsInCart,
+        productsCount: cart.numItemsInCart,
         orderTotal: cart.orderTotal,
         tax: cart.tax,
         shipping: cart.shipping,
@@ -5135,6 +5190,7 @@ export const createOrderAction = async (prevState: any, formData: FormData) => {
   }
   redirect("/orders")
 }
+
 export const fetchUserOrders = async () => {
   const user = await getAuthUser()
   const orders = await db.order.findMany({
@@ -5254,8 +5310,6 @@ export default OrdersPage
 - create app/admin/sales/loading.tsx
 
 ```tsx
-"use client"
-
 import LoadingTable from "@/components/global/LoadingTable"
 
 function loading() {
@@ -5431,6 +5485,7 @@ export default function CheckoutPage() {
   const fetchClientSecret = useCallback(async () => {
     // Create a Checkout Session
     const response = await axios.post("/api/payment", {
+      // not stripe api endpoint, its our custom backend route
       orderId: orderId,
       cartId: cartId,
     })
@@ -5451,13 +5506,13 @@ export default function CheckoutPage() {
 
 ### API - Payment Route
 
-- create api/payment/route.ts
+- create api/payment/route.ts (filename must be route.ts)
 
 ```ts
 import Stripe from "stripe"
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 import { type NextRequest } from "next/server"
-import db from "@/utils/db"
+import { prisma } from "@/lib/prisma"
 
 export const POST = async (req: NextRequest) => {
   const requestHeaders = new Headers(req.headers)
@@ -5465,12 +5520,12 @@ export const POST = async (req: NextRequest) => {
 
   const { orderId, cartId } = await req.json()
 
-  const order = await db.order.findUnique({
+  const order = await prisma.order.findUnique({
     where: {
       id: orderId,
     },
   })
-  const cart = await db.cart.findUnique({
+  const cart = await prisma.cart.findUnique({
     where: {
       id: cartId,
     },
@@ -5502,8 +5557,9 @@ export const POST = async (req: NextRequest) => {
     }
   })
   try {
+    // https://docs.stripe.com/api/checkout/sessions/create
     const session = await stripe.checkout.sessions.create({
-      ui_mode: "embedded",
+      ui_mode: "embedded_page",
       metadata: { orderId, cartId },
       line_items: line_items,
       mode: "payment",
@@ -5522,7 +5578,8 @@ export const POST = async (req: NextRequest) => {
 }
 ```
 
-- product structure
+- line_item (product) structure
+- [line_items docs](https://docs.stripe.com/api/checkout/sessions/create#create_checkout_session-line_items)
 
 ```ts
 return {
@@ -5559,7 +5616,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 import { redirect } from "next/navigation"
 
 import { type NextRequest } from "next/server"
-import db from "@/utils/db"
+import { prisma } from "@/lib/prisma"
 
 export const GET = async (req: NextRequest) => {
   const { searchParams } = new URL(req.url)
@@ -5572,7 +5629,7 @@ export const GET = async (req: NextRequest) => {
     const orderId = session.metadata?.orderId
     const cartId = session.metadata?.cartId
     if (session.status === "complete") {
-      await db.order.update({
+      await prisma.order.update({
         where: {
           id: orderId,
         },
@@ -5580,7 +5637,7 @@ export const GET = async (req: NextRequest) => {
           isPaid: true,
         },
       })
-      await db.cart.delete({
+      await prisma.cart.delete({
         where: {
           id: cartId,
         },
